@@ -8,7 +8,9 @@
     "dev": "nodemon src/server.js",
     "migrate:latest": "knex migrate:latest",
     "migrate:rollback": "knex migrate:rollback",
-    "seed:run": "knex seed:run"
+    "seed:run": "knex seed:run",
+    "db:setup": "node src/database/initPg.js",
+    "db:check": "node src/database/checkPg.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.750.0",
@@ -24,6 +26,7 @@
     "mysql2": "^3.12.0",
     "node-cron": "^4.6.0",
     "pdfkit": "^0.16.0",
+    "pg": "^8.23.1",
     "socket.io": "^4.8.1",
     "sqlite3": "^5.1.7",
     "uuid": "^11.1.0",

@@ -2,17 +2,19 @@ const bcrypt = require('bcryptjs');
 
 exports.seed = async function(knex) {
   // Clear tables in reverse dependency order
-  await knex('chat_messages').del();
-  await knex('lms_materials').del();
-  await knex('certificates').del();
-  await knex('badges').del();
-  await knex('tahsin_submissions').del();
-  await knex('hafalan_histories').del();
-  await knex('santri').del();
-  await knex('classes').del();
-  await knex('users').del();
-  await knex('tenants').del();
-  await knex('packages').del();
+  await knex('attendances').del().catch(() => {});
+  await knex('schedules').del().catch(() => {});
+  await knex('chat_messages').del().catch(() => {});
+  await knex('lms_materials').del().catch(() => {});
+  await knex('certificates').del().catch(() => {});
+  await knex('badges').del().catch(() => {});
+  await knex('tahsin_submissions').del().catch(() => {});
+  await knex('hafalan_histories').del().catch(() => {});
+  await knex('santri').del().catch(() => {});
+  await knex('classes').del().catch(() => {});
+  await knex('users').del().catch(() => {});
+  await knex('tenants').del().catch(() => {});
+  await knex('packages').del().catch(() => {});
 
   // 1. Packages
   const [basicId, standardId, premiumId] = await knex('packages').insert([
