@@ -1,7 +1,8 @@
 require('dotenv').config();
 const path = require('path');
 
-const rawClient = process.env.DB_CLIENT || (process.env.DATABASE_URL ? 'pg' : 'sqlite3');
+// Default to 'pg' (PostgreSQL) for production readiness unless explicitly set to sqlite3
+const rawClient = process.env.DB_CLIENT || (process.env.DATABASE_URL ? 'pg' : 'pg');
 const client = rawClient === 'postgresql' || rawClient === 'postgres' ? 'pg' : rawClient;
 
 const isPg = client === 'pg';
