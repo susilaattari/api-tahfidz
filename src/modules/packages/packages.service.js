@@ -24,21 +24,78 @@ class PackagesService {
 
   async createPackage(data) {
     const { name, code, price, max_santri, features } = data;
-    const [id] = await db('packages').insert({
-      name,
-      code,
-      price: price || 0,
-      max_santri: max_santri || 100,
-      features: typeof features === 'object' ? JSON.stringify(features) : (features || '{}'),
-    });
-    return this.getPackageById(id);
+
+    if (!name || !String(name).trim()) {
+      const err = new Error('Nama paket wajib diisi.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (!code || !String(code).trim()) {
+      const err = new Error('Kode unik paket wajib diisi.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const cleanCode = String(code).trim().toLowerCase();
+
+    // Check unique code
+    const existing = await db('packages').where({ code: cleanCode }).first();
+    if (existing) {
+      const err = new Error(`Kode paket '${cleanCode}' sudah digunakan oleh paket "${existing.name}". Silakan gunakan kode unik yang lain.`);
+      err.statusCode = 409;
+      throw err;
+    }
+
+    try {
+      const [id] = await db('packages').insert({
+        name: String(name).trim(),
+        code: cleanCode,
+        price: price !== undefined ? Number(price) : 0,
+        max_santri: max_santri !== undefined ? Number(max_santri) : 100,
+        features: typeof features === 'object' ? JSON.stringify(features) : (features || '{}'),
+      });
+      return this.getPackageById(id);
+    } catch (dbErr) {
+      if (dbErr.code === '23505' || dbErr.message?.includes('packages_code_unique')) {
+        const err = new Error(`Kode paket '${cleanCode}' sudah digunakan. Silakan gunakan kode unik yang lain.`);
+        err.statusCode = 409;
+        throw err;
+      }
+      throw dbErr;
+    }
   }
 
   async updatePackage(id, data) {
     const { name, code, price, max_santri, features } = data;
     const updatePayload = {};
-    if (name) updatePayload.name = name;
-    if (code) updatePayload.code = code;
+
+    if (name !== undefined) {
+      if (!String(name).trim()) {
+        const err = new Error('Nama paket tidak boleh kosong.');
+        err.statusCode = 400;
+        throw err;
+      }
+      updatePayload.name = String(name).trim();
+    }
+
+    let cleanCode = null;
+    if (code !== undefined) {
+      if (!String(code).trim()) {
+        const err = new Error('Kode unik paket tidak boleh kosong.');
+        err.statusCode = 400;
+        throw err;
+      }
+      cleanCode = String(code).trim().toLowerCase();
+      const existing = await db('packages').where({ code: cleanCode }).whereNot({ id }).first();
+      if (existing) {
+        const err = new Error(`Kode paket '${cleanCode}' sudah digunakan oleh paket "${existing.name}". Silakan gunakan kode unik yang lain.`);
+        err.statusCode = 409;
+        throw err;
+      }
+      updatePayload.code = cleanCode;
+    }
+
     if (price !== undefined) updatePayload.price = Number(price);
     if (max_santri !== undefined) updatePayload.max_santri = Number(max_santri);
     if (features !== undefined) {
@@ -46,8 +103,17 @@ class PackagesService {
     }
     updatePayload.updated_at = db.fn.now();
 
-    await db('packages').where({ id }).update(updatePayload);
-    return this.getPackageById(id);
+    try {
+      await db('packages').where({ id }).update(updatePayload);
+      return this.getPackageById(id);
+    } catch (dbErr) {
+      if (dbErr.code === '23505' || dbErr.message?.includes('packages_code_unique')) {
+        const err = new Error(`Kode paket '${cleanCode || code}' sudah digunakan. Silakan gunakan kode unik yang lain.`);
+        err.statusCode = 409;
+        throw err;
+      }
+      throw dbErr;
+    }
   }
 
   async deletePackage(id) {

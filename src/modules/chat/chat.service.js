@@ -52,10 +52,13 @@ class ChatService {
 
     // Emit Socket.io event if io instance provided
     if (io) {
-      const room = room_type === 'kajian_channel'
+      const roomName = room_type === 'kajian_channel'
         ? `tenant_${tenantId}_kajian`
-        : `tenant_${tenantId}_class_${class_id}`;
-      io.to(room).emit('new_message', inserted);
+        : (class_id ? `tenant_${tenantId}_class_${class_id}` : `tenant_${tenantId}_class_group`);
+
+      io.to(roomName).emit('new_message', inserted);
+      io.to(`tenant_${tenantId}`).emit('new_message', inserted);
+      io.emit('new_message', inserted);
     }
 
     return inserted;

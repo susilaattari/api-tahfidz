@@ -30,15 +30,38 @@ class TahsinService {
     }
 
     const list = await query.orderBy('tahsin_submissions.created_at', 'desc');
-    return list.map((item) => {
-      const isReviewed = item.status === 'reviewed';
-      const isAudioDeleted = item.audio_url === 'DELETED' || !item.audio_url || isReviewed;
-      return {
+    const now = new Date();
+    const result = [];
+
+    for (const item of list) {
+      let isAudioDeleted = item.audio_url === 'DELETED' || !item.audio_url;
+      let audioDaysRemaining = null;
+
+      if (!isAudioDeleted && item.created_at) {
+        const createdTime = new Date(item.created_at).getTime();
+        const diffMs = now.getTime() - createdTime;
+        const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+        if (diffDays >= 7) {
+          // Otomatis hapus karena sudah lebih dari 7 hari / 1 minggu
+          this.cleanAudioFile(item.id, item.tenant_id).catch(() => {});
+          isAudioDeleted = true;
+          audioDaysRemaining = 0;
+        } else {
+          audioDaysRemaining = Math.max(1, Math.ceil(7 - diffDays));
+        }
+      }
+
+      result.push({
         ...item,
-        audio_url: isReviewed ? 'DELETED' : item.audio_url,
+        audio_url: isAudioDeleted ? 'DELETED' : item.audio_url,
+        feedback_audio_url: isAudioDeleted ? null : item.feedback_audio_url,
         is_audio_deleted: isAudioDeleted,
-      };
-    });
+        audio_days_remaining: audioDaysRemaining,
+      });
+    }
+
+    return result;
   }
 
   async getSubmissionById(id, tenantId) {
@@ -60,11 +83,31 @@ class TahsinService {
       err.statusCode = 404;
       throw err;
     }
-    const isReviewed = submission.status === 'reviewed';
+
+    const now = new Date();
+    let isAudioDeleted = submission.audio_url === 'DELETED' || !submission.audio_url;
+    let audioDaysRemaining = null;
+
+    if (!isAudioDeleted && submission.created_at) {
+      const createdTime = new Date(submission.created_at).getTime();
+      const diffMs = now.getTime() - createdTime;
+      const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+      if (diffDays >= 7) {
+        await this.cleanAudioFile(submission.id, submission.tenant_id);
+        isAudioDeleted = true;
+        audioDaysRemaining = 0;
+      } else {
+        audioDaysRemaining = Math.max(1, Math.ceil(7 - diffDays));
+      }
+    }
+
     return {
       ...submission,
-      audio_url: isReviewed ? 'DELETED' : submission.audio_url,
-      is_audio_deleted: submission.audio_url === 'DELETED' || !submission.audio_url || isReviewed,
+      audio_url: isAudioDeleted ? 'DELETED' : submission.audio_url,
+      feedback_audio_url: isAudioDeleted ? null : submission.feedback_audio_url,
+      is_audio_deleted: isAudioDeleted,
+      audio_days_remaining: audioDaysRemaining,
     };
   }
 
@@ -79,8 +122,9 @@ class TahsinService {
 
     let audioUrl = data.audio_url || '';
     if (file) {
-      const filename = `tahsin/audio_${Date.now()}_${file.originalname}`;
-      audioUrl = await uploadFile(filename, file.buffer, file.mimetype);
+      const cleanName = (file.originalname || 'recording.m4a').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const filename = `tahsin/audio_${Date.now()}_${cleanName}`;
+      audioUrl = await uploadFile(filename, file.buffer, file.mimetype || 'audio/m4a');
     }
 
     if (!audioUrl) {
@@ -89,7 +133,7 @@ class TahsinService {
       throw err;
     }
 
-    const [id] = await db('tahsin_submissions').insert({
+    const insertResult = await db('tahsin_submissions').insert({
       tenant_id: tenantId,
       santri_id: Number(santri_id),
       wali_id: waliId || null,
@@ -101,6 +145,10 @@ class TahsinService {
       status: 'pending',
     });
 
+    const id = Array.isArray(insertResult)
+      ? (typeof insertResult[0] === 'object' ? insertResult[0]?.id : insertResult[0])
+      : insertResult;
+
     return this.getSubmissionById(id, tenantId);
   }
 
@@ -109,8 +157,9 @@ class TahsinService {
 
     let feedbackAudioUrl = reviewData.feedback_audio_url || null;
     if (feedbackAudioFile) {
-      const filename = `tahsin/feedback_${Date.now()}_${feedbackAudioFile.originalname}`;
-      feedbackAudioUrl = await uploadFile(filename, feedbackAudioFile.buffer, feedbackAudioFile.mimetype);
+      const cleanName = (feedbackAudioFile.originalname || 'feedback.m4a').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const filename = `tahsin/feedback_${Date.now()}_${cleanName}`;
+      feedbackAudioUrl = await uploadFile(filename, feedbackAudioFile.buffer, feedbackAudioFile.mimetype || 'audio/m4a');
     }
 
     const currentSubmission = await db('tahsin_submissions')
@@ -124,8 +173,8 @@ class TahsinService {
     }
 
     let finalAudioUrl = currentSubmission.audio_url;
-    // Default hapus file rekaman audio otomatis saat setoran dikoreksi untuk menghemat memori
-    const shouldDeleteAudio = delete_audio !== false;
+    // Hapus file rekaman audio otomatis jika guru mengaktifkan opsi hapus rekaman
+    const shouldDeleteAudio = delete_audio === true || delete_audio === 'true';
     if (shouldDeleteAudio && currentSubmission.audio_url && currentSubmission.audio_url !== 'DELETED') {
       await deleteFile(currentSubmission.audio_url);
       finalAudioUrl = 'DELETED';
@@ -206,6 +255,59 @@ class TahsinService {
       .del();
 
     return { id, message: 'Data setoran tahsin berhasil dihapus sepenuhnya.' };
+  }
+
+  /**
+   * Pembersihan otomatis file rekaman audio tahsin yang berumur lebih dari threshold (default 7 hari / 1 minggu)
+   * Hanya menghapus file audio fisik untuk menghemat kapasitas server, catatan dan nilai tetap ada.
+   */
+  async autoCleanOldAudios(daysThreshold = 7) {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysThreshold);
+
+    const candidates = await db('tahsin_submissions')
+      .where(function () {
+        this.where(function () {
+          this.whereNotNull('audio_url')
+            .andWhere('audio_url', '!=', 'DELETED')
+            .andWhere('audio_url', '!=', '');
+        }).orWhere(function () {
+          this.whereNotNull('feedback_audio_url')
+            .andWhere('feedback_audio_url', '!=', 'DELETED')
+            .andWhere('feedback_audio_url', '!=', '');
+        });
+      })
+      .where('created_at', '<', cutoffDate);
+
+    let cleanedCount = 0;
+    const cleanedIds = [];
+
+    for (const item of candidates) {
+      if (item.audio_url && item.audio_url !== 'DELETED') {
+        await deleteFile(item.audio_url);
+      }
+      if (item.feedback_audio_url && item.feedback_audio_url !== 'DELETED') {
+        await deleteFile(item.feedback_audio_url);
+      }
+
+      await db('tahsin_submissions')
+        .where({ id: item.id })
+        .update({
+          audio_url: 'DELETED',
+          feedback_audio_url: null,
+          updated_at: db.fn.now(),
+        });
+
+      cleanedCount++;
+      cleanedIds.push(item.id);
+    }
+
+    return {
+      cleanedCount,
+      cleanedIds,
+      daysThreshold,
+      cutoffDate: cutoffDate.toISOString(),
+    };
   }
 }
 

@@ -19,7 +19,7 @@ router.post('/submit', upload.single('audio'), tahsinController.submit);
 router.post('/:id/review', authorize('super_admin', 'admin_tenant', 'guru'), upload.single('feedback_audio'), tahsinController.review);
 
 // Delete submission to free audio storage & memory
-router.delete('/:id', authorize('super_admin', 'admin_tenant', 'guru', 'wali'), tahsinController.delete);
-router.post('/:id/clean-audio', authorize('super_admin', 'admin_tenant', 'guru', 'wali'), tahsinController.cleanAudio);
+router.delete('/:id', authorize('super_admin', 'admin_tenant', 'guru', 'wali', 'wali_santri'), tahsinController.delete);
+router.post('/:id/clean-audio', authorize('super_admin', 'admin_tenant', 'guru', 'wali', 'wali_santri'), tahsinController.cleanAudio);
 
 module.exports = router;

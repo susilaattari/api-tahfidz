@@ -30,6 +30,18 @@ class AuthService {
       throw err;
     }
 
+    if (user.status === 'pending_approval') {
+      const err = new Error('Pendaftaran akun Anda sedang menunggu verifikasi pembayaran oleh Super Admin. Silakan kirim bukti transfer melalui WhatsApp untuk aktivasi.');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    if (user.status === 'rejected') {
+      const err = new Error('Pendaftaran akun Anda telah ditolak oleh Super Admin.');
+      err.statusCode = 403;
+      throw err;
+    }
+
     if (user.status !== 'active') {
       const err = new Error('Akun Anda sedang dinonaktifkan. Silakan hubungi admin.');
       err.statusCode = 403;
@@ -51,6 +63,18 @@ class AuthService {
       if (!tenant) {
         const err = new Error('Institusi tidak ditemukan.');
         err.statusCode = 404;
+        throw err;
+      }
+
+      if (tenant.status === 'pending_approval') {
+        const err = new Error('Pendaftaran institusi Anda sedang menunggu verifikasi pembayaran oleh Super Admin. Silakan kirimkan bukti transfer melalui WhatsApp untuk aktivasi.');
+        err.statusCode = 403;
+        throw err;
+      }
+
+      if (tenant.status === 'rejected') {
+        const err = new Error(`Pendaftaran institusi Anda ditolak. Alasan: ${tenant.rejection_reason || 'Bukti transfer tidak valid'}`);
+        err.statusCode = 403;
         throw err;
       }
 

@@ -1,4 +1,5 @@
 const santriService = require('./santri.service');
+const hafalanService = require('../hafalan/hafalan.service');
 const { successResponse } = require('../../utils/response.util');
 
 class SantriController {
@@ -16,6 +17,9 @@ class SantriController {
   async getById(req, res, next) {
     try {
       const tenantId = req.user.role === 'super_admin' ? req.tenantId : req.user.tenant_id;
+      if (req.user.role === 'wali_santri') {
+        await hafalanService.assertSantriAccess(req.user, tenantId, req.params.id);
+      }
       const santri = await santriService.getSantriById(req.params.id, tenantId);
       return successResponse(res, 'Detail data santri berhasil diambil.', santri);
     } catch (error) {

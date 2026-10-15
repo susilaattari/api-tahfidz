@@ -61,6 +61,13 @@ app.post('/api/jobs/check-subscriptions', async (req, res) => {
   return successResponse(res, 'Pemeriksaan status langganan tenant selesai dieksekusi.', result);
 });
 
+// Trigger Tahsin Audio Cleaner Job manually / for testing
+app.post('/api/jobs/clean-tahsin-audio', async (req, res) => {
+  const { runTahsinAudioCleaner } = require('./jobs/tahsinAudioCleaner.job');
+  const result = await runTahsinAudioCleaner();
+  return successResponse(res, 'Pembersihan otomatis file audio tahsin selesai dieksekusi.', result);
+});
+
 // Apply rate limiter to general api routes
 app.use('/api', apiLimiter);
 

@@ -34,6 +34,7 @@ io.on('connection', (socket) => {
 
 const { initMurojaahCronJob } = require('./jobs/murojaahReminder.job');
 const { initSubscriptionCronJob } = require('./jobs/subscriptionChecker.job');
+const { initTahsinAudioCleanerCronJob } = require('./jobs/tahsinAudioCleaner.job');
 
 server.listen(PORT, () => {
   logger.info(`=================================================`);
@@ -45,6 +46,7 @@ server.listen(PORT, () => {
   // Start Background Cron Schedulers
   initMurojaahCronJob();
   initSubscriptionCronJob();
+  initTahsinAudioCleanerCronJob();
 });
 
 

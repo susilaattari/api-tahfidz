@@ -64,12 +64,14 @@ exports.seed = async function(knex) {
   ]);
 
   // 2. Tenants
+  const oneYearFromNow = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
   const [tenant1Id, tenant2Id] = await knex('tenants').insert([
     {
       name: 'Pesantren Tahfidz Al-Hikmah',
       subdomain: 'alhikmah',
       plan_id: 3, // Premium
       status: 'active',
+      subscription_expires_at: oneYearFromNow,
       theme_config: JSON.stringify({
         primaryColor: '#059669',
         institutionName: 'Pesantren Al-Hikmah',
@@ -81,6 +83,7 @@ exports.seed = async function(knex) {
       subdomain: 'darulquran',
       plan_id: 2, // Standard
       status: 'active',
+      subscription_expires_at: oneYearFromNow,
       theme_config: JSON.stringify({
         primaryColor: '#2563eb',
         institutionName: 'RTQ Darul Quran',
@@ -201,6 +204,34 @@ exports.seed = async function(knex) {
       grade: 'Mumtaz',
       notes: 'Lulus Ujian Tasmi Sekali Duduk Juz 30 dengan predikat Mumtaz.',
       date_recorded: '2026-10-05',
+    },
+    {
+      tenant_id: 1,
+      santri_id: 1,
+      guru_id: 3,
+      type: 'tasmi',
+      juz: 29,
+      surah_number: 67,
+      surah_name: 'Al-Mulk s/d Al-Mursalat (Juz 29 Lengkap)',
+      verse_start: 1,
+      verse_end: 50,
+      grade: 'Mumtaz',
+      notes: 'Lulus Ujian Tasmi Sekali Duduk Juz 29 dengan predikat Mumtaz.',
+      date_recorded: '2026-10-06',
+    },
+    {
+      tenant_id: 1,
+      santri_id: 1,
+      guru_id: 3,
+      type: 'tasmi',
+      juz: 28,
+      surah_number: 58,
+      surah_name: 'Al-Mujadilah s/d At-Tahrim (Juz 28 Lengkap)',
+      verse_start: 1,
+      verse_end: 12,
+      grade: 'Mumtaz',
+      notes: 'Lulus Ujian Tasmi Sekali Duduk Juz 28 dengan predikat Mumtaz.',
+      date_recorded: '2026-10-08',
     },
   ]);
 

@@ -66,6 +66,33 @@ class TenantsController {
       next(error);
     }
   }
+
+  async registerSelf(req, res, next) {
+    try {
+      const registered = await tenantsService.registerSelfTenant(req.body);
+      return successResponse(res, registered.message, registered, 201);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async approve(req, res, next) {
+    try {
+      const approved = await tenantsService.approveTenant(req.params.id, req.body);
+      return successResponse(res, 'Pendaftaran tenant berhasil disetujui dan diaktifkan.', approved);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async reject(req, res, next) {
+    try {
+      const rejected = await tenantsService.rejectTenant(req.params.id, req.body);
+      return successResponse(res, rejected.message, rejected);
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 module.exports = new TenantsController();

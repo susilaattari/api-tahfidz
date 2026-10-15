@@ -56,7 +56,8 @@ const uploadFile = async (filename, buffer, mimeType = 'application/octet-stream
   }
 
   fs.writeFileSync(targetPath, buffer);
-  const baseUrl = process.env.BASE_URL || 'http://localhost:8099';
+  const rawBaseUrl = process.env.BASE_URL || (process.env.NODE_ENV === 'production' ? 'https://api.quriva.tech' : 'http://localhost:8099');
+  const baseUrl = rawBaseUrl.replace(/\/+$/, '');
   return `${baseUrl}/uploads/${filename}`;
 };
 
