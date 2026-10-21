@@ -17,7 +17,13 @@ class ChatController {
     try {
       const tenantId = req.user.tenant_id || req.tenantId;
       const io = req.app.get('io');
-      const message = await chatService.sendMessage(tenantId, req.user.id, req.body, io);
+      const message = await chatService.sendMessage(
+        tenantId,
+        req.user.id,
+        req.body,
+        io,
+        req.user.role
+      );
       return successResponse(res, 'Pesan terkirim.', message, 201);
     } catch (error) {
       next(error);

@@ -25,6 +25,8 @@ const attendanceRoutes = require('./modules/attendance/attendance.routes');
 const schedulesRoutes = require('./modules/schedules/schedules.routes');
 const dashboardContentRoutes = require('./modules/dashboardContent/dashboardContent.routes');
 const quotaRequestsRoutes = require('./modules/quotaRequests/quotaRequests.routes');
+const consentsRoutes = require('./modules/consents/consents.routes');
+const consentsAdminRoutes = require('./modules/consents/consents.admin.routes');
 const { runMurojaahReminder } = require('./jobs/murojaahReminder.job');
 const { runSubscriptionChecker } = require('./jobs/subscriptionChecker.job');
 
@@ -95,6 +97,8 @@ app.use('/api/jadwal', schedulesRoutes); // Indonesian alias
 app.use('/api/dashboard-content', dashboardContentRoutes);
 app.use('/api/portal-content', dashboardContentRoutes); // Alias
 app.use('/api/quota-requests', quotaRequestsRoutes);
+app.use('/api/consents', consentsRoutes);
+app.use('/api/admin/consents', consentsAdminRoutes);
 
 
 // 404 Handler

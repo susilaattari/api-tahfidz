@@ -318,8 +318,21 @@ class HafalanService {
       }
     }
 
+    // Trigger push notification to Wali Santri in background
+    try {
+      const notificationService = require('../../services/notification.service');
+      notificationService.notifyWaliSetoranBaru(santri_id, {
+        surahName: surah_name,
+        verseStart: verse_start,
+        verseEnd: verse_end,
+        grade,
+        type,
+      }).catch(() => {});
+    } catch (_) {}
+
     return recorded;
   }
+
 
   // ---------------------------------------------------------------------
   // Detail setoran beserta penilaian per ayat (untuk wali, santri, ustad)

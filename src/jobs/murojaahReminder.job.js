@@ -39,17 +39,33 @@ async function runMurojaahReminder() {
         .first();
 
       if (!recentMurojaah) {
+        const messageText = `Pengingat Muroja'ah: Ananda ${item.santri_name} belum mengulang hafalan dalam 7 hari terakhir. Yuk muroja'ah hari ini!`;
         remindersIssued.push({
           santri_id: item.santri_id,
           santri_name: item.santri_name,
           wali_name: item.wali_name,
-          message: `Pengingat Muroja'ah: Ananda ${item.santri_name} belum mengulang hafalan dalam 7 hari terakhir. Yuk muroja'ah hari ini!`,
+          message: messageText,
         });
+
+        // Kirim push notification ke Wali Santri
+        if (item.wali_id) {
+          try {
+            const notificationService = require('../services/notification.service');
+            await notificationService.notifyMurojaahSpacedRepetition(item.santri_id, {
+              santriName: item.santri_name,
+              waliId: item.wali_id,
+              lastMurojaahDays: 7,
+            });
+          } catch (notifErr) {
+            logger.warn(`[CRON NOTIFICATION ERROR] Gagal mengirim push notif santri ${item.santri_id}: ${notifErr.message}`);
+          }
+        }
       }
     }
 
-    logger.info(`[CRON JOB] Selesai. Diterbitkan ${remindersIssued.length} pengingat murojaah.`);
+    logger.info(`[CRON JOB] Selesai. Diterbitkan & dikirim ${remindersIssued.length} pengingat murojaah.`);
     return remindersIssued;
+
   } catch (error) {
     logger.error('[CRON JOB ERROR] Gagal menjalankan murojaah reminder:', error);
     return [];

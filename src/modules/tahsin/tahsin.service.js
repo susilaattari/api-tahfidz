@@ -193,8 +193,20 @@ class TahsinService {
         updated_at: db.fn.now(),
       });
 
+    // Trigger push notification to Wali Santri in background
+    try {
+      const notificationService = require('../../services/notification.service');
+      const { surahName } = require('../../utils/quran.util');
+      notificationService.notifyWaliTahsinKoreksi(currentSubmission.santri_id, {
+        surahName: surahName(currentSubmission.surah_number),
+        verseStart: currentSubmission.verse_start,
+        verseEnd: currentSubmission.verse_end,
+      }).catch(() => {});
+    } catch (_) {}
+
     return this.getSubmissionById(id, tenantId);
   }
+
 
   async cleanAudioFile(id, tenantId) {
     const submission = await db('tahsin_submissions')

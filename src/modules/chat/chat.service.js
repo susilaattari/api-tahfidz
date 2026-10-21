@@ -22,12 +22,23 @@ class ChatService {
     return query.orderBy('chat_messages.created_at', 'asc').limit(100);
   }
 
-  async sendMessage(tenantId, senderId, data, io = null) {
+  async sendMessage(tenantId, senderId, data, io = null, senderRole = null) {
     const { room_type, class_id, message, attachment_url } = data;
 
     if (!message || !message.trim()) {
       const err = new Error('Pesan tidak boleh kosong.');
       err.statusCode = 400;
+      throw err;
+    }
+
+    if (
+      room_type === 'kajian_channel' &&
+      ['wali_santri', 'wali'].includes(senderRole)
+    ) {
+      const err = new Error(
+        'Kanal broadcast edukasi hanya dapat diisi oleh guru atau admin.'
+      );
+      err.statusCode = 403;
       throw err;
     }
 

@@ -67,6 +67,49 @@ class UsersController {
       next(error);
     }
   }
+
+  async savePushToken(req, res, next) {
+    try {
+      const notificationService = require('../../services/notification.service');
+      const { token, device_type } = req.body;
+      if (!token) {
+        return res.status(400).json({ success: false, message: 'Push token wajib disertakan.' });
+      }
+      const saved = await notificationService.saveToken(req.user.id, token, device_type || 'mobile');
+      return successResponse(res, 'Token notifikasi berhasil didaftarkan.', saved);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async removePushToken(req, res, next) {
+    try {
+      const notificationService = require('../../services/notification.service');
+      const { token } = req.body;
+      if (!token) {
+        return res.status(400).json({ success: false, message: 'Token wajib disertakan.' });
+      }
+      await notificationService.removeToken(req.user.id, token);
+      return successResponse(res, 'Token notifikasi berhasil dihapus.');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async sendTestNotification(req, res, next) {
+    try {
+      const notificationService = require('../../services/notification.service');
+      const result = await notificationService.sendToUser(req.user.id, {
+        title: 'Uji Coba Notifikasi Quriva 🔔',
+        body: `Halo ${req.user.name}, notifikasi berhasil terhubung dengan akun Anda!`,
+        data: { type: 'test_notification', timestamp: new Date().toISOString() },
+      });
+      return successResponse(res, 'Notifikasi uji coba berhasil dikirim.', result);
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 module.exports = new UsersController();
+
