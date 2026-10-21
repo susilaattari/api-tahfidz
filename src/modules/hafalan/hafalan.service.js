@@ -66,9 +66,22 @@ class HafalanService {
   }
 
   async getHistories(tenantId, filters = {}, user = null) {
-    const { santri_id, class_id, type, jenis, limit, per_page } = filters;
+    const {
+      santri_id,
+      class_id,
+      type,
+      jenis,
+      limit,
+      per_page,
+      page = 1,
+      search = '',
+      paginated = false,
+    } = filters;
     const filterType = type || jenis;
-    const limitNum = Number(limit || per_page || 50);
+    const pageNum = Math.max(1, Number(page) || 1);
+    const pageSize = paginated
+      ? Math.min(100, Math.max(1, Number(per_page) || 10))
+      : Math.max(1, Number(limit || per_page || 50));
 
     let query = db('hafalan_histories')
       .leftJoin('santri', 'hafalan_histories.santri_id', 'santri.id')
@@ -104,11 +117,30 @@ class HafalanService {
       query = query.where('hafalan_histories.type', filterType);
     }
 
+    const cleanSearch = String(search || '').trim().toLowerCase();
+    if (cleanSearch) {
+      query = query.where((builder) => {
+        builder
+          .whereRaw('LOWER(santri.full_name) LIKE ?', [`%${cleanSearch}%`])
+          .orWhereRaw('LOWER(hafalan_histories.surah_name) LIKE ?', [`%${cleanSearch}%`]);
+      });
+    }
+
+    let total = null;
+    if (paginated) {
+      const totalRow = await query.clone().clearSelect().clearOrder().count({ count: 'hafalan_histories.id' }).first();
+      total = Number(totalRow?.count || 0);
+      query = query.limit(pageSize).offset((pageNum - 1) * pageSize);
+    } else {
+      query = query.limit(pageSize);
+    }
+
     const histories = await query
       .orderBy('hafalan_histories.date_recorded', 'desc')
-      .orderBy('hafalan_histories.id', 'desc')
-      .limit(limitNum);
-    return histories.map((h) => this._formatHistory(h));
+      .orderBy('hafalan_histories.id', 'desc');
+
+    const items = histories.map((h) => this._formatHistory(h));
+    return paginated ? { items, total, page: pageNum, per_page: pageSize } : items;
   }
 
   _formatHistory(h) {

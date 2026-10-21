@@ -2,6 +2,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../../config/database');
 const { getSubscriptionMeta } = require('../../jobs/subscriptionChecker.job');
+const mailService = require('../../services/mail.service');
+const logger = require('../../utils/logger');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'tahfidz_secret_jwt_key_2026_super_secure';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
@@ -223,6 +225,224 @@ class AuthService {
     });
 
     return { message: 'Kata sandi berhasil diperbarui.' };
+  }
+
+  /**
+   * Generate & send a 6-digit OTP to the specified email
+   */
+  async sendOtp(email, type = 'registration') {
+    if (!email || !email.includes('@')) {
+      const err = new Error('Alamat email valid wajib diisi.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+
+    // Rate-limiting check: ensure user doesn't request OTP more than once every 30 seconds
+    const recentOtp = await db('otp_verifications')
+      .where({ email: cleanEmail, type, is_verified: false })
+      .orderBy('created_at', 'desc')
+      .first();
+
+    if (recentOtp) {
+      const diffSeconds = (new Date() - new Date(recentOtp.created_at)) / 1000;
+      if (diffSeconds < 30) {
+        const waitTime = Math.ceil(30 - diffSeconds);
+        const err = new Error(`Harap tunggu ${waitTime} detik sebelum meminta kode OTP kembali.`);
+        err.statusCode = 429;
+        throw err;
+      }
+    }
+
+    // Generate random 6-digit OTP code
+    const otpCode = String(Math.floor(100000 + Math.random() * 900000));
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes validity
+
+    // Invalidate old unverified OTPs for this email and type
+    await db('otp_verifications')
+      .where({ email: cleanEmail, type, is_verified: false })
+      .update({ is_verified: false, attempts: 99 });
+
+    // Insert new OTP record
+    await db('otp_verifications').insert({
+      email: cleanEmail,
+      otp_code: otpCode,
+      type,
+      expires_at: expiresAt,
+      is_verified: false,
+      attempts: 0,
+      created_at: db.fn.now(),
+      updated_at: db.fn.now(),
+    });
+
+    // Send email using mailService
+    const mailResult = await mailService.sendOtpEmail(cleanEmail, otpCode, type);
+
+    return {
+      email: cleanEmail,
+      expires_in: 300,
+      simulated: mailResult.simulated || false,
+      dev_otp: mailResult.simulated ? otpCode : undefined,
+    };
+  }
+
+  /**
+   * Verify 6-digit OTP
+   */
+  async verifyOtp(email, otpCode, type = 'registration') {
+    if (!email || !otpCode) {
+      const err = new Error('Email dan kode OTP 6 digit wajib diisi.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanCode = String(otpCode).trim();
+
+    // Check if recently verified already (idempotent for submit flows)
+    const alreadyVerified = await db('otp_verifications')
+      .where({ email: cleanEmail, type, is_verified: true, otp_code: cleanCode })
+      .where('updated_at', '>=', new Date(Date.now() - 15 * 60 * 1000))
+      .first();
+
+    if (alreadyVerified) {
+      return {
+        verified: true,
+        email: cleanEmail,
+      };
+    }
+
+    const record = await db('otp_verifications')
+      .where({ email: cleanEmail, type, is_verified: false })
+      .orderBy('created_at', 'desc')
+      .first();
+
+    if (!record) {
+      const err = new Error('Kode OTP tidak ditemukan atau sudah kadaluarsa. Silakan minta kode baru.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Check attempts
+    if (record.attempts >= 5) {
+      const err = new Error('Anda telah melebihi batas percobaan OTP. Silakan minta kode OTP baru.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Check expiry
+    if (new Date() > new Date(record.expires_at)) {
+      const err = new Error('Kode OTP telah kadaluarsa (berlaku 5 menit). Silakan minta kode baru.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Check code match
+    if (record.otp_code !== cleanCode) {
+      await db('otp_verifications')
+        .where({ id: record.id })
+        .increment('attempts', 1);
+
+      const remaining = 5 - (record.attempts + 1);
+      logger.warn(`[OTP VERIFY FAILED] Email: "${cleanEmail}" | Input: "${cleanCode}" | Expected: "${record.otp_code}" | Sisa: ${remaining}`);
+      const err = new Error(`Kode OTP salah. Sisa percobaan: ${remaining} kali.`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Mark as verified
+    await db('otp_verifications')
+      .where({ id: record.id })
+      .update({ is_verified: true, updated_at: db.fn.now() });
+
+    logger.info(`[OTP VERIFY SUCCESS] Email: "${cleanEmail}" | Code: "${cleanCode}"`);
+
+    return {
+      verified: true,
+      email: cleanEmail,
+    };
+  }
+
+  /**
+   * Super Admin Impersonation: Seamlessly log in as a Tenant Admin
+   */
+  async impersonate(superAdminUser, targetTenantId) {
+    if (superAdminUser.role !== 'super_admin') {
+      const err = new Error('Hanya Super Admin yang memiliki hak akses impersonasi.');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    const tenant = await db('tenants').where({ id: targetTenantId }).first();
+    if (!tenant) {
+      const err = new Error('Institusi mitra tidak ditemukan.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    // Find the main administrator of this tenant
+    let tenantAdmin = await db('users')
+      .where({ tenant_id: targetTenantId, role: 'admin_tenant' })
+      .first();
+
+    if (!tenantAdmin) {
+      tenantAdmin = await db('users').where({ tenant_id: targetTenantId }).first();
+    }
+
+    if (!tenantAdmin) {
+      const err = new Error('Belum ada akun pengurus yang terdaftar untuk institusi ini.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const subMeta = getSubscriptionMeta(tenant);
+    let packageInfo = null;
+    if (tenant.plan_id) {
+      const pkg = await db('packages').where({ id: tenant.plan_id }).first();
+      if (pkg) {
+        packageInfo = {
+          ...pkg,
+          features: typeof pkg.features === 'string' ? JSON.parse(pkg.features || '{}') : (pkg.features || {}),
+        };
+      }
+    }
+
+    // Generate JWT token for impersonated tenant admin
+    const token = jwt.sign(
+      {
+        userId: tenantAdmin.id,
+        role: tenantAdmin.role,
+        tenantId: tenant.id,
+        email: tenantAdmin.email,
+        isImpersonated: true,
+        originalSuperAdminId: superAdminUser.id,
+        originalSuperAdminName: superAdminUser.name,
+      },
+      JWT_SECRET,
+      { expiresIn: '1d' }
+    );
+
+    delete tenantAdmin.password_hash;
+
+    logger.info(`[IMPERSONATION] SuperAdmin "${superAdminUser.name}" (ID: ${superAdminUser.id}) masuk sebagai Admin Institusi "${tenant.name}" (User: ${tenantAdmin.name}, ID: ${tenantAdmin.id})`);
+
+    return {
+      token,
+      user: {
+        ...tenantAdmin,
+        tenant: {
+          ...tenant,
+          ...subMeta,
+        },
+        package: packageInfo,
+        isImpersonated: true,
+        originalSuperAdmin: {
+          id: superAdminUser.id,
+          name: superAdminUser.name,
+        },
+      },
+    };
   }
 }
 

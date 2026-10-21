@@ -3,10 +3,24 @@ const db = require('../../config/database');
 class PackagesService {
   async getAllPackages() {
     const packages = await db('packages').select('*').orderBy('price', 'asc');
-    return packages.map(pkg => ({
-      ...pkg,
-      features: typeof pkg.features === 'string' ? JSON.parse(pkg.features || '{}') : pkg.features,
-    }));
+    return packages.map(pkg => {
+      const features = typeof pkg.features === 'string' ? JSON.parse(pkg.features || '{}') : (pkg.features || {});
+      const duration_months = pkg.duration_months !== undefined && pkg.duration_months !== null ? Number(pkg.duration_months) : (features.duration_months || 1);
+      const extra_price_per_user = pkg.extra_price_per_user !== undefined && pkg.extra_price_per_user !== null ? Number(pkg.extra_price_per_user) : (features.extra_price_per_user || 0);
+      return {
+        ...pkg,
+        price: Number(pkg.price || 0),
+        max_santri: Number(pkg.max_santri || 0),
+        duration_months,
+        extra_price_per_user,
+        features: {
+          ...features,
+          duration_months,
+          extra_price_per_user,
+          base_capacity: Number(pkg.max_santri || 0),
+        },
+      };
+    });
   }
 
   async getPackageById(id) {
@@ -16,14 +30,26 @@ class PackagesService {
       err.statusCode = 404;
       throw err;
     }
+    const features = typeof pkg.features === 'string' ? JSON.parse(pkg.features || '{}') : (pkg.features || {});
+    const duration_months = pkg.duration_months !== undefined && pkg.duration_months !== null ? Number(pkg.duration_months) : (features.duration_months || 1);
+    const extra_price_per_user = pkg.extra_price_per_user !== undefined && pkg.extra_price_per_user !== null ? Number(pkg.extra_price_per_user) : (features.extra_price_per_user || 0);
     return {
       ...pkg,
-      features: typeof pkg.features === 'string' ? JSON.parse(pkg.features || '{}') : pkg.features,
+      price: Number(pkg.price || 0),
+      max_santri: Number(pkg.max_santri || 0),
+      duration_months,
+      extra_price_per_user,
+      features: {
+        ...features,
+        duration_months,
+        extra_price_per_user,
+        base_capacity: Number(pkg.max_santri || 0),
+      },
     };
   }
 
   async createPackage(data) {
-    const { name, code, price, max_santri, features } = data;
+    const { name, code, price, max_santri, duration_months, extra_price_per_user, features } = data;
 
     if (!name || !String(name).trim()) {
       const err = new Error('Nama paket wajib diisi.');
@@ -47,13 +73,22 @@ class PackagesService {
       throw err;
     }
 
+    const finalDuration = duration_months !== undefined ? Number(duration_months) : 1;
+    const finalExtraPrice = extra_price_per_user !== undefined ? Number(extra_price_per_user) : 0;
+    const parsedFeatures = typeof features === 'object' ? { ...features } : JSON.parse(features || '{}');
+    parsedFeatures.duration_months = finalDuration;
+    parsedFeatures.extra_price_per_user = finalExtraPrice;
+    parsedFeatures.base_capacity = max_santri !== undefined ? Number(max_santri) : 10;
+
     try {
       const [id] = await db('packages').insert({
         name: String(name).trim(),
         code: cleanCode,
         price: price !== undefined ? Number(price) : 0,
-        max_santri: max_santri !== undefined ? Number(max_santri) : 100,
-        features: typeof features === 'object' ? JSON.stringify(features) : (features || '{}'),
+        max_santri: max_santri !== undefined ? Number(max_santri) : 10,
+        duration_months: finalDuration,
+        extra_price_per_user: finalExtraPrice,
+        features: JSON.stringify(parsedFeatures),
       });
       return this.getPackageById(id);
     } catch (dbErr) {
@@ -67,7 +102,7 @@ class PackagesService {
   }
 
   async updatePackage(id, data) {
-    const { name, code, price, max_santri, features } = data;
+    const { name, code, price, max_santri, duration_months, extra_price_per_user, features } = data;
     const updatePayload = {};
 
     if (name !== undefined) {
@@ -98,8 +133,20 @@ class PackagesService {
 
     if (price !== undefined) updatePayload.price = Number(price);
     if (max_santri !== undefined) updatePayload.max_santri = Number(max_santri);
-    if (features !== undefined) {
-      updatePayload.features = typeof features === 'object' ? JSON.stringify(features) : features;
+    if (duration_months !== undefined) updatePayload.duration_months = Number(duration_months);
+    if (extra_price_per_user !== undefined) updatePayload.extra_price_per_user = Number(extra_price_per_user);
+
+    if (features !== undefined || duration_months !== undefined || extra_price_per_user !== undefined || max_santri !== undefined) {
+      const currentPkg = await db('packages').where({ id }).first();
+      const currentFeatures = typeof currentPkg?.features === 'string' ? JSON.parse(currentPkg.features || '{}') : (currentPkg?.features || {});
+      const inputFeatures = features !== undefined ? (typeof features === 'object' ? features : JSON.parse(features || '{}')) : currentFeatures;
+      const mergedFeatures = {
+        ...inputFeatures,
+        duration_months: duration_months !== undefined ? Number(duration_months) : (inputFeatures.duration_months || currentPkg?.duration_months || 1),
+        extra_price_per_user: extra_price_per_user !== undefined ? Number(extra_price_per_user) : (inputFeatures.extra_price_per_user || currentPkg?.extra_price_per_user || 0),
+        base_capacity: max_santri !== undefined ? Number(max_santri) : (inputFeatures.base_capacity || currentPkg?.max_santri || 10),
+      };
+      updatePayload.features = JSON.stringify(mergedFeatures);
     }
     updatePayload.updated_at = db.fn.now();
 

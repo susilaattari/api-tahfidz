@@ -8,8 +8,17 @@ class HafalanController {
   async getHistories(req, res, next) {
     try {
       const tenantId = req.user.role === 'super_admin' ? (req.query.tenant_id || req.tenantId) : req.user.tenant_id;
-      const histories = await hafalanService.getHistories(tenantId, req.query, req.user);
-      return successResponse(res, 'Riwayat hafalan berhasil diambil.', histories);
+      const paginated = req.query.paginated === 'true' || req.query.paginated === '1';
+      const result = await hafalanService.getHistories(tenantId, req.query, req.user);
+
+      if (paginated) {
+        const { items, total, page, per_page } = result;
+        return successResponse(res, 'Riwayat hafalan berhasil diambil.', items, 200, {
+          pagination: { page, per_page, total, total_pages: Math.max(1, Math.ceil(total / per_page)) },
+        });
+      }
+
+      return successResponse(res, 'Riwayat hafalan berhasil diambil.', result);
     } catch (error) {
       next(error);
     }
@@ -80,9 +89,18 @@ class HafalanController {
   async getSantriSetoran(req, res, next) {
     try {
       const tenantId = resolveTenant(req);
+      const paginated = req.query.paginated === 'true' || req.query.paginated === '1';
       await hafalanService.assertSantriAccess(req.user, tenantId, req.params.id);
-      const histories = await hafalanService.getHistories(tenantId, { ...req.query, santri_id: req.params.id }, req.user);
-      return successResponse(res, 'Riwayat setoran santri berhasil diambil.', histories);
+      const result = await hafalanService.getHistories(tenantId, { ...req.query, santri_id: req.params.id }, req.user);
+
+      if (paginated) {
+        const { items, total, page, per_page } = result;
+        return successResponse(res, 'Riwayat setoran santri berhasil diambil.', items, 200, {
+          pagination: { page, per_page, total, total_pages: Math.max(1, Math.ceil(total / per_page)) },
+        });
+      }
+
+      return successResponse(res, 'Riwayat setoran santri berhasil diambil.', result);
     } catch (error) {
       next(error);
     }

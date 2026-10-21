@@ -1,7 +1,16 @@
+const bcrypt = require('bcryptjs');
 const db = require('../../config/database');
 
 class SantriService {
-  async getSantriByTenant(tenantId, classId = null) {
+  async getSantriByTenant(tenantId, options = {}) {
+    const {
+      class_id: classId,
+      search = '',
+      page = 1,
+      per_page: perPage = 10,
+      paginated = false,
+    } = options;
+
     let query = db('santri')
       .leftJoin('classes', 'santri.class_id', 'classes.id')
       .leftJoin('users as wali', 'santri.wali_id', 'wali.id')
@@ -18,14 +27,35 @@ class SantriService {
       query = query.where('santri.class_id', classId);
     }
 
+    const cleanSearch = String(search || '').trim().toLowerCase();
+    if (cleanSearch) {
+      query = query.where((builder) => {
+        builder
+          .whereRaw('LOWER(santri.full_name) LIKE ?', [`%${cleanSearch}%`])
+          .orWhereRaw('LOWER(COALESCE(santri.nisn, \'\')) LIKE ?', [`%${cleanSearch}%`]);
+      });
+    }
+
+    const pageNum = Math.max(1, Number(page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(perPage) || 10));
+    let total = null;
+
+    if (paginated) {
+      const totalRow = await query.clone().clearSelect().clearOrder().count({ count: 'santri.id' }).first();
+      total = Number(totalRow?.count || 0);
+      query = query.limit(pageSize).offset((pageNum - 1) * pageSize);
+    }
+
     const list = await query.orderBy('santri.full_name', 'asc');
-    return list.map((item) => ({
+    const items = list.map((item) => ({
       ...item,
       name: item.name || item.full_name,
       nis: item.nis || item.nisn,
       kelas: typeof item.kelas === 'object' ? item.kelas : { id: item.class_id, name: item.class_name || 'Halaqah' },
       wali_santri: item.wali_name,
     }));
+
+    return paginated ? { items, total, page: pageNum, per_page: pageSize } : items;
   }
 
   async getSantriById(id, tenantId) {
@@ -77,26 +107,50 @@ class SantriService {
 
 
   async createSantri(tenantId, data) {
-    const { wali_id, class_id, nisn, full_name, gender, total_juz_hafalan } = data;
+    let { wali_id, class_id, nisn, full_name, gender, total_juz_hafalan, email, phone, password, create_account } = data;
     if (!full_name) {
       const err = new Error('Nama lengkap santri wajib diisi.');
       err.statusCode = 400;
       throw err;
     }
 
-    // Enforce tenant max_santri package quota
+    // Enforce tenant max_santri package quota (or requested_santri_count if additional quota was purchased)
     const tenant = await db('tenants')
       .leftJoin('packages', 'tenants.plan_id', 'packages.id')
       .where('tenants.id', tenantId)
-      .select('packages.max_santri')
+      .select('packages.max_santri', 'tenants.requested_santri_count')
       .first();
 
-    const maxAllowed = tenant?.max_santri || 100;
+    const maxAllowed = Math.max(Number(tenant?.requested_santri_count || 0), Number(tenant?.max_santri || 10));
     const currentCount = await db('santri').where({ tenant_id: tenantId }).count('id as count').first();
     if (Number(currentCount?.count || 0) >= maxAllowed) {
-      const err = new Error(`Batas kuota santri (${maxAllowed}) untuk paket ini telah tercapai. Silakan upgrade paket.`);
+      const err = new Error(`Batas kuota santri (${maxAllowed}) untuk paket ini telah tercapai. Silakan tambah kuota santri atau upgrade paket.`);
       err.statusCode = 403;
       throw err;
+    }
+
+    // Auto-create user login account for non-pesantren / independent learner
+    if ((create_account || email) && !wali_id) {
+      const cleanEmail = email ? email.trim().toLowerCase() : null;
+      if (cleanEmail) {
+        const existingUser = await db('users').where({ email: cleanEmail }).first();
+        if (existingUser) {
+          wali_id = existingUser.id;
+        } else {
+          const rawPassword = password || 'password123';
+          const password_hash = await bcrypt.hash(rawPassword, 10);
+          const [newUserId] = await db('users').insert({
+            tenant_id: tenantId,
+            name: full_name,
+            email: cleanEmail,
+            phone: phone ? phone.trim() : null,
+            password_hash,
+            role: 'wali_santri', // mapped to mobile user/member view
+            status: 'active',
+          });
+          wali_id = newUserId;
+        }
+      }
     }
 
     const [id] = await db('santri').insert({

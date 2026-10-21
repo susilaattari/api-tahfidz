@@ -36,6 +36,36 @@ class AuthController {
       next(error);
     }
   }
+
+  async sendOtp(req, res, next) {
+    try {
+      const { email, type = 'registration' } = req.body;
+      const result = await authService.sendOtp(email, type);
+      return successResponse(res, 'Kode verifikasi OTP telah dikirim ke email Anda.', result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async verifyOtp(req, res, next) {
+    try {
+      const { email, otp_code, code, type = 'registration' } = req.body;
+      const otpCode = otp_code || code;
+      const result = await authService.verifyOtp(email, otpCode, type);
+      return successResponse(res, 'Verifikasi kode OTP berhasil.', result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async impersonate(req, res, next) {
+    try {
+      const result = await authService.impersonate(req.user, req.params.tenantId);
+      return successResponse(res, `Berhasil masuk sebagai Admin ${result.user.tenant.name}.`, result);
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 module.exports = new AuthController();

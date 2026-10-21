@@ -7,18 +7,19 @@ const { authenticate, authorize } = require('../../middlewares/auth.middleware')
 router.get('/public/:subdomain', tenantsController.getBySubdomain);
 router.post('/register', tenantsController.registerSelf);
 
-// Public or Tenant check: Get tenant by id / details
-router.get('/', authenticate, authorize('super_admin'), tenantsController.getAll);
-router.get('/:id', authenticate, tenantsController.getById);
-
-// Super Admin management
-router.post('/', authenticate, authorize('super_admin'), tenantsController.create);
-router.put('/:id', authenticate, authorize('super_admin'), tenantsController.update);
+// Specific sub-resource actions (placed before generic /:id)
+router.put('/:id/theme', authenticate, authorize('super_admin', 'admin_tenant'), tenantsController.updateTheme);
+router.put('/:id/settings', authenticate, authorize('super_admin', 'admin_tenant'), tenantsController.updateSettings);
+router.put('/:id/quota', authenticate, authorize('super_admin'), tenantsController.addQuota);
 router.put('/:id/approve', authenticate, authorize('super_admin'), tenantsController.approve);
 router.put('/:id/reject', authenticate, authorize('super_admin'), tenantsController.reject);
-router.delete('/:id', authenticate, authorize('super_admin'), tenantsController.delete);
 
-// Theme customization (Tenant Admin or Super Admin)
-router.put('/:id/theme', authenticate, authorize('super_admin', 'admin_tenant'), tenantsController.updateTheme);
+// Generic Tenant CRUD & Summary
+router.get('/platform-summary', authenticate, authorize('super_admin'), tenantsController.getPlatformSummary);
+router.get('/', authenticate, authorize('super_admin'), tenantsController.getAll);
+router.get('/:id', authenticate, tenantsController.getById);
+router.post('/', authenticate, authorize('super_admin'), tenantsController.create);
+router.put('/:id', authenticate, authorize('super_admin'), tenantsController.update);
+router.delete('/:id', authenticate, authorize('super_admin'), tenantsController.delete);
 
 module.exports = router;

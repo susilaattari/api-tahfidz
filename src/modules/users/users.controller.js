@@ -6,8 +6,22 @@ class UsersController {
     try {
       const tenantId = req.user.role === 'super_admin' ? (req.query.tenant_id || req.tenantId) : req.user.tenant_id;
       const role = req.query.role || null;
-      const users = await usersService.getUsersByTenant(tenantId, role);
-      return successResponse(res, 'Data pengguna berhasil diambil.', users);
+      const paginated = req.query.paginated === 'true' || req.query.paginated === '1';
+      const result = await usersService.getUsersByTenant(tenantId, role, {
+        search: req.query.search || '',
+        page: req.query.page,
+        per_page: req.query.per_page,
+        paginated,
+      });
+
+      if (paginated) {
+        const { items, total, page, per_page } = result;
+        return successResponse(res, 'Data pengguna berhasil diambil.', items, 200, {
+          pagination: { page, per_page, total, total_pages: Math.max(1, Math.ceil(total / per_page)) },
+        });
+      }
+
+      return successResponse(res, 'Data pengguna berhasil diambil.', result);
     } catch (error) {
       next(error);
     }

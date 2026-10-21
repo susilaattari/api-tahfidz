@@ -6,9 +6,23 @@ class SantriController {
   async getAll(req, res, next) {
     try {
       const tenantId = req.user.role === 'super_admin' ? (req.query.tenant_id || req.tenantId) : req.user.tenant_id;
-      const classId = req.query.class_id || null;
-      const list = await santriService.getSantriByTenant(tenantId, classId);
-      return successResponse(res, 'Daftar santri berhasil diambil.', list);
+      const paginated = req.query.paginated === 'true' || req.query.paginated === '1';
+      const result = await santriService.getSantriByTenant(tenantId, {
+        class_id: req.query.class_id || null,
+        search: req.query.search || '',
+        page: req.query.page,
+        per_page: req.query.per_page,
+        paginated,
+      });
+
+      if (paginated) {
+        const { items, total, page, per_page } = result;
+        return successResponse(res, 'Daftar santri berhasil diambil.', items, 200, {
+          pagination: { page, per_page, total, total_pages: Math.max(1, Math.ceil(total / per_page)) },
+        });
+      }
+
+      return successResponse(res, 'Daftar santri berhasil diambil.', result);
     } catch (error) {
       next(error);
     }

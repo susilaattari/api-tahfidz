@@ -2,7 +2,14 @@ const bcrypt = require('bcryptjs');
 const db = require('../../config/database');
 
 class UsersService {
-  async getUsersByTenant(tenantId, role = null) {
+  async getUsersByTenant(tenantId, role = null, options = {}) {
+    const {
+      search = '',
+      page = 1,
+      per_page: perPage = 10,
+      paginated = false,
+    } = options;
+
     let query = db('users')
       .leftJoin('tenants', 'users.tenant_id', 'tenants.id')
       .select(
@@ -25,12 +32,35 @@ class UsersService {
     if (role) {
       query = query.where({ 'users.role': role });
     }
+
+    const cleanSearch = String(search || '').trim().toLowerCase();
+    if (cleanSearch) {
+      query = query.where((builder) => {
+        builder
+          .whereRaw('LOWER(users.name) LIKE ?', [`%${cleanSearch}%`])
+          .orWhereRaw('LOWER(users.email) LIKE ?', [`%${cleanSearch}%`])
+          .orWhereRaw('LOWER(COALESCE(users.phone, \'\')) LIKE ?', [`%${cleanSearch}%`]);
+      });
+    }
+
+    const pageNum = Math.max(1, Number(page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(perPage) || 10));
+    let total = null;
+
+    if (paginated) {
+      const totalRow = await query.clone().clearSelect().clearOrder().count({ count: 'users.id' }).first();
+      total = Number(totalRow?.count || 0);
+      query = query.limit(pageSize).offset((pageNum - 1) * pageSize);
+    }
+
     const results = await query.orderBy('users.created_at', 'desc');
-    return results.map((u) => ({
+    const items = results.map((u) => ({
       ...u,
       can_create_lms_local: Boolean(u.can_create_lms_local),
       can_create_lms_global: Boolean(u.can_create_lms_global),
     }));
+
+    return paginated ? { items, total, page: pageNum, per_page: pageSize } : items;
   }
 
   async getUserById(id, tenantId = null) {

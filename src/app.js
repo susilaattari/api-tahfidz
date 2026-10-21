@@ -23,6 +23,8 @@ const lmsRoutes = require('./modules/lms/lms.routes');
 const chatRoutes = require('./modules/chat/chat.routes');
 const attendanceRoutes = require('./modules/attendance/attendance.routes');
 const schedulesRoutes = require('./modules/schedules/schedules.routes');
+const dashboardContentRoutes = require('./modules/dashboardContent/dashboardContent.routes');
+const quotaRequestsRoutes = require('./modules/quotaRequests/quotaRequests.routes');
 const { runMurojaahReminder } = require('./jobs/murojaahReminder.job');
 const { runSubscriptionChecker } = require('./jobs/subscriptionChecker.job');
 
@@ -90,6 +92,9 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/absensi', attendanceRoutes); // Indonesian alias
 app.use('/api/schedules', schedulesRoutes);
 app.use('/api/jadwal', schedulesRoutes); // Indonesian alias
+app.use('/api/dashboard-content', dashboardContentRoutes);
+app.use('/api/portal-content', dashboardContentRoutes); // Alias
+app.use('/api/quota-requests', quotaRequestsRoutes);
 
 
 // 404 Handler
